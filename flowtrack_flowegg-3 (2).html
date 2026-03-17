@@ -2856,283 +2856,212 @@ const AUDIO_B64 = {
 // ══════════════════════════════════════════════
 // FLOWEGG
 // ══════════════════════════════════════════════
-(function(){
-  // State
-  let eggClaimed = false;
-  let eggNickname = '';
+// ── FLOWEGG ──────────────────────────────────
 
-  // 3D egg renderer using raw canvas
-  let rotX = 0.35, rotY = 0.6;
-  let dragging = false, lastX = 0, lastY = 0;
-  let velX = 0, velY = 0;
-  let animFrame = null;
+// 3D egg renderer
+let feRotX = 0.35, feRotY = 0.6;
+let feDragging = false, feLastX = 0, feLastY = 0;
+let feVelX = 0, feVelY = 0;
+let feAnimFrame = null;
 
-  function saveEggState(){
-    try{localStorage.setItem('flowegg_claimed','1');localStorage.setItem('flowegg_nick', eggNickname);}catch(e){}
+function launchConfetti(){
+  const canvas=document.createElement('canvas');
+  canvas.className='flowegg-confetti';
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx=canvas.getContext('2d');
+  const colors=['#ffd060','#ff9900','#c084fc','#7c6fff','#2dde9a','#ff6b6b','#60d0ff'];
+  const particles=Array.from({length:90},()=>({
+    x:canvas.width/2+(-200+Math.random()*400),
+    y:canvas.height*0.35,
+    vx:(Math.random()-0.5)*14,
+    vy:-8-Math.random()*10,
+    size:5+Math.random()*7,
+    color:colors[Math.floor(Math.random()*colors.length)],
+    rot:Math.random()*360,
+    rotV:(Math.random()-0.5)*12,
+    alpha:1
+  }));
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    let alive=false;
+    particles.forEach(p=>{
+      p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.rot+=p.rotV;p.alpha-=0.015;
+      if(p.alpha>0){alive=true;ctx.save();ctx.globalAlpha=Math.max(0,p.alpha);ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);ctx.fillStyle=p.color;ctx.fillRect(-p.size/2,-p.size/4,p.size,p.size/2);ctx.restore();}
+    });
+    if(alive)requestAnimationFrame(draw);else canvas.remove();
   }
-  function loadEggState(){
-    try{
-      eggClaimed = localStorage.getItem('flowegg_claimed')==='1';
-      eggNickname = localStorage.getItem('flowegg_nick')||'';
-    }catch(e){}
+  draw();
+}
+
+function renderFlowEggPage(){
+  const hasClaimed = !!S.flowEgg;
+  document.getElementById('flowegg-earn-screen').style.display = hasClaimed ? 'none' : '';
+  document.getElementById('flowegg-egg-screen').style.display = hasClaimed ? '' : 'none';
+  if(hasClaimed){
+    document.getElementById('flowegg-nickname').value = S.flowEgg.nickname || '';
+    updateEggXP();
+    initEggCanvas();
+    checkEggHatch();
   }
+}
 
-  window.saveEggNickname = function(v){ eggNickname=v; saveEggState(); };
+function claimFlowEgg(){
+  if(S.flowEgg) return;
+  S.flowEgg = { nickname: '', claimedAt: Date.now(), hatched: false };
+  saveLocal();
+  awardXP(50, '🥚 FlowEgg reivindicado!');
+  launchConfetti();
+  const earnEl = document.getElementById('flowegg-earn-screen');
+  earnEl.style.transition='opacity .6s';
+  earnEl.style.opacity='0';
+  setTimeout(()=>{
+    earnEl.style.display='none';
+    earnEl.style.opacity='';
+    const eggEl = document.getElementById('flowegg-egg-screen');
+    eggEl.style.display='flex';
+    eggEl.style.opacity='0';
+    eggEl.style.transition='opacity .5s';
+    setTimeout(()=>{eggEl.style.opacity='';eggEl.style.transition='';},50);
+    initEggCanvas();
+    updateEggXP();
+    checkEggHatch();
+  },600);
+}
 
-  window.renderFlowEggPage = function(){
-    loadEggState();
-    const earnEl = document.getElementById('flowegg-earn-screen');
-    const eggEl  = document.getElementById('flowegg-egg-screen');
-    if(eggClaimed){
-      earnEl.style.display='none';
-      eggEl.style.display='flex';
-      spawnParticlesBg(false);
-      initEggCanvas();
-      updateEggXP();
-      document.getElementById('flowegg-nickname').value = eggNickname;
-    } else {
-      earnEl.style.display='flex';
-      eggEl.style.display='none';
-      spawnParticlesBg(true);
-    }
-  };
+function updateEggXP(){
+  const xp = S.xp || 0;
+  const goal = 2500;
+  const pct = Math.min(100, Math.round(xp / goal * 100));
+  document.getElementById('flowegg-xp-fill').style.width = pct + '%';
+  document.getElementById('flowegg-xp-cur').textContent = Math.min(xp, goal);
+}
 
-  window.claimFlowEgg = function(){
-    eggClaimed = true;
-    saveEggState();
-    // Confetti burst
-    launchConfetti();
-    // Transition
-    const earnEl = document.getElementById('flowegg-earn-screen');
-    earnEl.style.transition='opacity .6s';
-    earnEl.style.opacity='0';
-    setTimeout(()=>{
-      earnEl.style.display='none';
-      earnEl.style.opacity='';
-      const eggEl = document.getElementById('flowegg-egg-screen');
-      eggEl.style.display='flex';
-      eggEl.style.opacity='0';
-      eggEl.style.transition='opacity .5s';
-      setTimeout(()=>{eggEl.style.opacity='';eggEl.style.transition='';},50);
-      initEggCanvas();
-      updateEggXP();
-    },600);
-  };
-
-  function updateEggXP(){
-    const xp = (typeof S !== 'undefined' ? S.xp : 0);
-    const goal = 2500;
-    const pct = Math.min(100, Math.round(xp/goal*100));
-    document.getElementById('flowegg-xp-fill').style.width = pct+'%';
-    document.getElementById('flowegg-xp-cur').textContent = Math.min(xp, goal);
+function checkEggHatch(){
+  if(!S.flowEgg || S.flowEgg.hatched) return;
+  if(S.xp >= 2500){
+    S.flowEgg.hatched = true;
+    saveLocal();
+    hatchEgg();
   }
+}
 
-  // ── PARTICLES BG ───────────────────────────
-  function spawnParticlesBg(forEarnScreen){
-    const container = document.getElementById('flowegg-earn-particles');
-    if(!container) return;
-    container.innerHTML='';
-    if(!forEarnScreen)return;
-    for(let i=0;i<28;i++){
-      const p=document.createElement('div');
-      const size = 3+Math.random()*6;
-      const colors=['#ffd060','#ff9900','#c084fc','#7c6fff','#2dde9a'];
-      p.style.cssText=`position:absolute;border-radius:50%;width:${size}px;height:${size}px;
-        background:${colors[Math.floor(Math.random()*colors.length)]};
-        left:${Math.random()*100}%;top:${Math.random()*100}%;
-        opacity:0;
-        animation:feParticle ${2+Math.random()*3}s ${Math.random()*4}s ease-in-out infinite alternate;`;
-      container.appendChild(p);
-    }
-    // Inject keyframes if not present
-    if(!document.getElementById('fe-kf')){
-      const s=document.createElement('style');s.id='fe-kf';
-      s.textContent='@keyframes feParticle{0%{opacity:0;transform:translateY(0) scale(.5)}50%{opacity:.7}100%{opacity:0;transform:translateY(-40px) scale(1.2)}}';
-      document.head.appendChild(s);
-    }
+function hatchEgg(){
+  const rewards = [
+    { name: '🐉 Dragão do Flow',    rarity: 'Lendário', bonus: 'xp',     desc: '+500 XP bônus!' },
+    { name: '🦋 Borboleta Mística', rarity: 'Raro',     bonus: 'streak', desc: '+3 dias de streak!' },
+    { name: '🌟 Estrela Dourada',   rarity: 'Épico',    bonus: 'xp',     desc: '+500 XP bônus!' },
+    { name: '🐣 Pintinho Caótico',  rarity: 'Comum',    bonus: 'none',   desc: 'Só um pintinho. Mas é seu.' },
+    { name: '🦄 Unicórnio Pixel',   rarity: 'Lendário', bonus: 'none',   desc: 'Desbloqueou cor secreta!' },
+  ];
+  const reward = rewards[Math.floor(Math.random() * rewards.length)];
+  if(reward.bonus === 'xp')     awardXP(500, '🌟 Bônus do ovo!');
+  if(reward.bonus === 'streak'){ S.streak = (S.streak||0) + 3; saveLocal(); }
+
+  launchConfetti();
+
+  const canvas = document.getElementById('flowegg-canvas');
+  if(canvas){
+    let shakes = 0;
+    canvas.style.transition = 'transform 0.1s';
+    const shake = setInterval(()=>{
+      canvas.style.transform = `rotate(${shakes%2===0?-8:8}deg) scale(1.05)`;
+      shakes++;
+      if(shakes > 10){
+        clearInterval(shake);
+        canvas.style.transition = 'transform 0.4s';
+        canvas.style.transform = 'scale(0)';
+        setTimeout(()=> showHatchResult(reward), 400);
+      }
+    }, 80);
   }
+}
 
-  // ── CONFETTI ───────────────────────────────
-  function launchConfetti(){
-    const canvas=document.createElement('canvas');
-    canvas.className='flowegg-confetti';
-    canvas.width=window.innerWidth;canvas.height=window.innerHeight;
-    document.body.appendChild(canvas);
+function showHatchResult(reward){
+  const eggScreen = document.getElementById('flowegg-egg-screen');
+  eggScreen.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:20px;padding:40px 20px;text-align:center;">
+      <div style="font-size:5rem;animation:feIconFloat 2s ease-in-out infinite">${reward.name.split(' ')[0]}</div>
+      <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--text)">O ovo chocou! 🎉</div>
+      <div style="font-size:1rem;color:var(--text2)">${reward.name}</div>
+      <div style="font-size:.8rem;padding:6px 16px;border-radius:99px;background:var(--bg2);border:1px solid var(--border);color:var(--text2)">${reward.rarity}</div>
+      <div style="font-size:.9rem;color:var(--text2);font-style:italic">${reward.desc}</div>
+    </div>
+  `;
+}
+
+function initEggCanvas(){
+  const canvas = document.getElementById('flowegg-canvas');
+  if(!canvas) return;
+  if(feAnimFrame){cancelAnimationFrame(feAnimFrame);feAnimFrame=null;}
+  function draw(){
     const ctx=canvas.getContext('2d');
-    const colors=['#ffd060','#ff9900','#c084fc','#7c6fff','#2dde9a','#ff6b6b','#60d0ff'];
-    const particles=Array.from({length:90},()=>({
-      x:canvas.width/2+(-200+Math.random()*400),
-      y:canvas.height*0.35,
-      vx:(Math.random()-0.5)*14,
-      vy:-8-Math.random()*10,
-      size:5+Math.random()*7,
-      color:colors[Math.floor(Math.random()*colors.length)],
-      rot:Math.random()*360,
-      rotV:(Math.random()-0.5)*12,
-      alpha:1
-    }));
-    let frame;
-    function draw(){
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      let alive=false;
-      particles.forEach(p=>{
-        p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.rot+=p.rotV;p.alpha-=0.015;
-        if(p.alpha>0){alive=true;ctx.save();ctx.globalAlpha=Math.max(0,p.alpha);ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);ctx.fillStyle=p.color;ctx.fillRect(-p.size/2,-p.size/4,p.size,p.size/2);ctx.restore();}
-      });
-      if(alive)frame=requestAnimationFrame(draw);else canvas.remove();
+    const W=canvas.width,H=canvas.height;
+    ctx.clearRect(0,0,W,H);
+    const cx=W/2,cy=H/2,t=Date.now()*0.001;
+    const cosX=Math.cos(feRotX),sinX=Math.sin(feRotX);
+    const cosY=Math.cos(feRotY),sinY=Math.sin(feRotY);
+    function rotatePoint([x,y,z]){
+      let x2=x*cosY+z*sinY,z2=-x*sinY+z*cosY;
+      let y2=y*cosX-z2*sinX,z3=y*sinX+z2*cosX;
+      return [x2,y2,z3];
     }
-    draw();
-  }
-
-  // ── 3D EGG RENDERER ─────────────────────────
-  function initEggCanvas(){
-    const canvas = document.getElementById('flowegg-canvas');
-    if(!canvas) return;
-    if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;}
-
-    function draw(){
-      const ctx = canvas.getContext('2d');
-      const W=canvas.width, H=canvas.height;
-      ctx.clearRect(0,0,W,H);
-
-      // Draw 3D "cube/egg" shape - custom blocky egg
-      const cx=W/2, cy=H/2;
-      const t = Date.now()*0.001;
-
-      // Build rotation matrix
-      const cosX=Math.cos(rotX), sinX=Math.sin(rotX);
-      const cosY=Math.cos(rotY), sinY=Math.sin(rotY);
-      function rotatePoint([x,y,z]){
-        // rotate around Y
-        let x2=x*cosY+z*sinY;
-        let z2=-x*sinY+z*cosY;
-        // rotate around X
-        let y2=y*cosX-z2*sinX;
-        let z3=y*sinX+z2*cosX;
-        return [x2,y2,z3];
-      }
-      function project([x,y,z]){
-        const fov=4.5;
-        const scale=fov/(fov+z/100);
-        return [cx+x*scale*1.1, cy-y*scale*1.1];
-      }
-
-      // "Blocky egg" - elongated rounded cube shape using many faces
-      // Define a rounded-square-egg: taller than wide, slightly tapered top
-      const R=100; // radius
-      const faces = [];
-
-      // We'll draw it as an 8-faced approximate shape
-      // Vertices of a stretched cube with egg-like proportions
-      const verts = [
-        [-60,-90, 50],[ 60,-90, 50],[ 60, 90, 50],[-60, 90, 50], // front
-        [-60,-90,-50],[ 60,-90,-50],[ 60, 90,-50],[-60, 90,-50], // back
-      ];
-
-      const rawFaces = [
-        {pts:[0,1,2,3], color:'#6a5aee', shine:0.9},  // front
-        {pts:[5,4,7,6], color:'#3d2f8a', shine:0.3},  // back
-        {pts:[1,5,6,2], color:'#8a70ff', shine:0.7},  // right
-        {pts:[4,0,3,7], color:'#2a1f6a', shine:0.2},  // left
-        {pts:[4,5,1,0], color:'#9d8cff', shine:1.0},  // top
-        {pts:[3,2,6,7], color:'#1e1545', shine:0.1},  // bottom
-      ];
-
-      // Sort faces by avg Z for painter's algo
-      const rotVerts = verts.map(rotatePoint);
-      rawFaces.forEach(f=>{
-        const pts3d = f.pts.map(i=>rotVerts[i]);
-        f.avgZ = pts3d.reduce((s,p)=>s+p[2],0)/pts3d.length;
-        // Check normal (backface cull)
-        const [a,b,c] = pts3d;
-        const nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);
-        const ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
-        const nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
-        f.visible = nz > 0;
-        faces.push(f);
-      });
-      faces.sort((a,b)=>a.avgZ-b.avgZ);
-
-      // Light dir
-      const lx=0.5,ly=-0.8,lz=0.7;
-      const llen=Math.sqrt(lx*lx+ly*ly+lz*lz);
-
-      faces.forEach(f=>{
-        if(!f.visible) return;
-        const pts2d = f.pts.map(i=>project(rotVerts[i]));
-        // Normal for lighting
-        const [a,b,c] = f.pts.map(i=>rotVerts[i]);
-        const nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);
-        const ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
-        const nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
-        const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
-        const dot=Math.max(0,(nx/nl*lx/llen+ny/nl*ly/llen+nz/nl*lz/llen));
-        const bright=0.18+dot*0.82;
-
-        ctx.beginPath();
-        ctx.moveTo(pts2d[0][0],pts2d[0][1]);
-        pts2d.slice(1).forEach(([px,py])=>ctx.lineTo(px,py));
-        ctx.closePath();
-
-        // Parse base color and apply brightness
-        const base=f.color;
-        const r=parseInt(base.slice(1,3),16);
-        const g=parseInt(base.slice(3,5),16);
-        const b2=parseInt(base.slice(5,7),16);
-        const rb=Math.min(255,Math.round(r*bright));
-        const gb=Math.min(255,Math.round(g*bright));
-        const bb=Math.min(255,Math.round(b2*bright));
-        ctx.fillStyle=`rgb(${rb},${gb},${bb})`;
-        ctx.fill();
-        ctx.strokeStyle='rgba(255,255,255,0.06)';
-        ctx.lineWidth=1;
-        ctx.stroke();
-      });
-
-      // Sheen highlight on top-front edge
-      const specPt = project(rotatePoint([0,-95,55]));
-      const grad=ctx.createRadialGradient(specPt[0],specPt[1],2,specPt[0],specPt[1],45);
-      grad.addColorStop(0,'rgba(255,255,255,0.22)');
-      grad.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.beginPath();ctx.arc(specPt[0],specPt[1],45,0,Math.PI*2);ctx.fillStyle=grad;ctx.fill();
-
-      // Subtle ambient glow ring
-      const glowR=110+Math.sin(t)*4;
-      const glowG=ctx.createRadialGradient(cx,cy+10,glowR*0.5,cx,cy+10,glowR);
-      glowG.addColorStop(0,'rgba(0,0,0,0)');
-      glowG.addColorStop(1,'rgba(124,111,255,0.04)');
-      ctx.beginPath();ctx.ellipse(cx,cy+10,glowR,glowR*0.4,0,0,Math.PI*2);ctx.fillStyle=glowG;ctx.fill();
-
-      if(!dragging){
-        rotY += velX * 0.016;
-        rotX += velY * 0.016;
-        velX *= 0.92; velY *= 0.92;
-        rotX = Math.max(-1.2,Math.min(1.2,rotX));
-      }
-      animFrame = requestAnimationFrame(draw);
+    function project([x,y,z]){
+      const s=4.5/(4.5+z/100);
+      return [cx+x*s*1.1,cy-y*s*1.1];
     }
-
-    draw();
-
-    // Drag controls
-    const canvas2 = canvas;
-    canvas2.onpointerdown = e=>{
-      dragging=true; lastX=e.clientX; lastY=e.clientY;
-      velX=0; velY=0;
-      canvas2.setPointerCapture(e.pointerId);
-      document.querySelector('.flowegg-canvas-hint').style.opacity='0';
-    };
-    canvas2.onpointermove = e=>{
-      if(!dragging)return;
-      const dx=e.clientX-lastX, dy=e.clientY-lastY;
-      rotY += dx*0.012; rotX += dy*0.012;
-      velX=dx; velY=dy;
-      lastX=e.clientX; lastY=e.clientY;
-      rotX=Math.max(-1.4,Math.min(1.4,rotX));
-    };
-    canvas2.onpointerup = ()=>{ dragging=false; };
+    const verts=[[-60,-90,50],[60,-90,50],[60,90,50],[-60,90,50],[-60,-90,-50],[60,-90,-50],[60,90,-50],[-60,90,-50]];
+    const rawFaces=[
+      {pts:[0,1,2,3],color:'#6a5aee'},{pts:[5,4,7,6],color:'#3d2f8a'},
+      {pts:[1,5,6,2],color:'#8a70ff'},{pts:[4,0,3,7],color:'#2a1f6a'},
+      {pts:[4,5,1,0],color:'#9d8cff'},{pts:[3,2,6,7],color:'#1e1545'},
+    ];
+    const rotVerts=verts.map(rotatePoint);
+    const faces=[];
+    rawFaces.forEach(f=>{
+      const pts3d=f.pts.map(i=>rotVerts[i]);
+      f.avgZ=pts3d.reduce((s,p)=>s+p[2],0)/pts3d.length;
+      const [a,b,c]=pts3d;
+      const nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+      f.visible=nz>0;
+      faces.push(f);
+    });
+    faces.sort((a,b)=>a.avgZ-b.avgZ);
+    const lx=0.5,ly=-0.8,lz=0.7,llen=Math.sqrt(lx*lx+ly*ly+lz*lz);
+    faces.forEach(f=>{
+      if(!f.visible)return;
+      const pts2d=f.pts.map(i=>project(rotVerts[i]));
+      const [a,b,c]=f.pts.map(i=>rotVerts[i]);
+      const nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);
+      const ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
+      const nz2=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+      const nl=Math.sqrt(nx*nx+ny*ny+nz2*nz2)||1;
+      const bright=0.18+Math.max(0,(nx/nl*lx/llen+ny/nl*ly/llen+nz2/nl*lz/llen))*0.82;
+      const r=parseInt(f.color.slice(1,3),16),g=parseInt(f.color.slice(3,5),16),b2=parseInt(f.color.slice(5,7),16);
+      ctx.beginPath();
+      ctx.moveTo(pts2d[0][0],pts2d[0][1]);
+      pts2d.slice(1).forEach(([px,py])=>ctx.lineTo(px,py));
+      ctx.closePath();
+      ctx.fillStyle=`rgb(${Math.min(255,Math.round(r*bright))},${Math.min(255,Math.round(g*bright))},${Math.min(255,Math.round(b2*bright))})`;
+      ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=1;ctx.stroke();
+    });
+    if(!feDragging){
+      feRotY+=feVelX*0.016;feRotX+=feVelY*0.016;
+      feVelX*=0.92;feVelY*=0.92;
+      feRotX=Math.max(-1.2,Math.min(1.2,feRotX));
+    }
+    feAnimFrame=requestAnimationFrame(draw);
   }
-})();
+  draw();
+  canvas.onpointerdown=e=>{feDragging=true;feLastX=e.clientX;feLastY=e.clientY;feVelX=0;feVelY=0;canvas.setPointerCapture(e.pointerId);};
+  canvas.onpointermove=e=>{if(!feDragging)return;const dx=e.clientX-feLastX,dy=e.clientY-feLastY;feRotY+=dx*0.012;feRotX+=dy*0.012;feVelX=dx;feVelY=dy;feLastX=e.clientX;feLastY=e.clientY;feRotX=Math.max(-1.4,Math.min(1.4,feRotX));};
+  canvas.onpointerup=()=>{feDragging=false;};
+}
+
+window.renderFlowEggPage = renderFlowEggPage;
+window.claimFlowEgg = claimFlowEgg;
+window.saveEggNickname = function(val){ if(!S.flowEgg)return; S.flowEgg.nickname=val; saveLocal(); };
 
 </script>
 
