@@ -2797,6 +2797,51 @@ function initApp(){
   else{updateEmotionDisplay(50);}
   renderEmoDayTabs();
 }
+function renderFlowEggPage(){
+  const hasClaimed = !!S.flowEgg;
+  document.getElementById('flowegg-earn-screen').style.display = hasClaimed ? 'none' : '';
+  document.getElementById('flowegg-egg-screen').style.display = hasClaimed ? '' : 'none';
+  if(hasClaimed){
+    document.getElementById('flowegg-nickname').value = S.flowEgg.nickname || '';
+    const xpPct = Math.min(100, Math.round((S.xp / 2500) * 100));
+    document.getElementById('flowegg-xp-fill').style.width = xpPct + '%';
+    document.getElementById('flowegg-xp-cur').textContent = S.xp;
+    drawFlowEgg();
+  }
+}
+
+function claimFlowEgg(){
+  if(S.flowEgg) return;
+  S.flowEgg = { nickname: '', claimedAt: Date.now() };
+  saveLocal();
+  awardXP(50, '🥚 FlowEgg reivindicado!');
+  renderFlowEggPage();
+}
+
+function drawFlowEgg(){
+  const canvas = document.getElementById('flowegg-canvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 340, 340);
+  const grad = ctx.createRadialGradient(130, 120, 10, 170, 170, 160);
+  grad.addColorStop(0, `hsl(${S.hue},70%,75%)`);
+  grad.addColorStop(1, `hsl(${S.hue},50%,35%)`);
+  ctx.beginPath();
+  ctx.ellipse(170, 185, 100, 130, 0, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = `hsl(${S.hue},70%,65%)`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+window.saveEggNickname = function(val){
+  if(!S.flowEgg) return;
+  S.flowEgg.nickname = val;
+  saveLocal();
+};
+ window.renderFlowEggPage = renderFlowEggPage;
+  window.claimFlowEgg = claimFlowEgg;
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script id="logo-data">
